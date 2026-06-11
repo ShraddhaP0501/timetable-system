@@ -7,3 +7,5 @@ use App\Http\Controllers\LectureReportController;
 Route::get('/test', [TestController::class, 'index']);
 Route::get('/lecture-report', [LectureReportController::class, 'index'])
     ->name('lecture.report');
+Route::get('/generate-timetable', [LectureReportController::class, 'generate'])
+    ->name('timetable.generate');
