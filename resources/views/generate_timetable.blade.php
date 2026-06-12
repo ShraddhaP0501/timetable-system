@@ -15,7 +15,7 @@
 
     {{-- Grid parameters --}}
     <div class="card">
-        <form method="GET" action="{{ route('timetable.generate') }}">
+        <form id="genForm" method="GET" action="{{ route('timetable.generate') }}">
             {{-- keep the selected classes when applying parameters --}}
             @foreach($selected as $classTitle)
                 <input type="hidden" name="classes[]" value="{{ $classTitle }}">
@@ -40,6 +40,11 @@
                     <input type="number" id="lectures_per_day" name="lectures_per_day"
                            value="{{ $lecturesPerDay }}" min="1" max="12">
                 </div>
+                <div class="param">
+                    <label for="max_labs_per_day">Max Labs per Day</label>
+                    <input type="number" id="max_labs_per_day" name="max_labs_per_day"
+                           value="{{ $maxLabsPerDay }}" min="1" max="4">
+                </div>
                 <button type="submit" class="btn">Apply</button>
             </div>
         </form>
@@ -60,10 +65,37 @@
                 <p class="hint">
                     Placed {{ $report->placed }} of {{ $report->demand }} periods
                     <small>(each lab = 2 consecutive periods)</small>
-                    @if($report->placed < $report->demand)
-                        — increase Lectures per Day to fit the rest.
-                    @endif
                 </p>
+
+                {{-- Per-class controls: shown ONLY when this class didn't fully fit --}}
+                @if($report->placed < $report->demand)
+                    <div class="fit-box">
+                        <span class="fit-msg">⚠ Not all lectures fit for this class. Adjust just this class:</span>
+                        <div class="fit-inputs">
+                            <label>
+                                Lectures/Day
+                                <input type="number" form="genForm" min="1" max="14"
+                                       name="class_periods[{{ $report->classTitle }}]"
+                                       value="{{ $report->periods }}">
+                            </label>
+                            <label>
+                                Max Labs/Day
+                                <input type="number" form="genForm" min="1" max="6"
+                                       name="class_maxlabs[{{ $report->classTitle }}]"
+                                       value="{{ $report->maxLabs }}">
+                            </label>
+                            <button type="submit" form="genForm" class="btn">Apply</button>
+                        </div>
+                    </div>
+                @else
+                    {{-- Class fits: keep any override it already has so it isn't lost on next Apply --}}
+                    @if($report->periods != $lecturesPerDay)
+                        <input type="hidden" form="genForm" name="class_periods[{{ $report->classTitle }}]" value="{{ $report->periods }}">
+                    @endif
+                    @if($report->maxLabs != $maxLabsPerDay)
+                        <input type="hidden" form="genForm" name="class_maxlabs[{{ $report->classTitle }}]" value="{{ $report->maxLabs }}">
+                    @endif
+                @endif
 
                 <table class="grid">
                     <thead>
@@ -75,7 +107,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @for($p = 0; $p < $lecturesPerDay; $p++)
+                        @for($p = 0; $p < $report->periods; $p++)
                             <tr>
                                 <td><strong>{{ $p + 1 }}</strong></td>
                                 @for($d = 0; $d < $days; $d++)

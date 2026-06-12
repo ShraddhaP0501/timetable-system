@@ -22,6 +22,11 @@ class TimetableGeneratorController extends Controller
             $lecturesPerDay = 8;
         }
 
+        $maxLabsPerDay = (int) $request->input('max_labs_per_day', 2);
+        if ($maxLabsPerDay < 1) {
+            $maxLabsPerDay = 2;
+        }
+
         $dayLabels = array_slice(
             ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
             0,
@@ -30,6 +35,11 @@ class TimetableGeneratorController extends Controller
 
         // User-supplied counts, keyed [classTitle][subjectId][theory|lab] => count.
         $userCounts = (array) $request->input('counts', []);
+
+        // Optional per-class overrides (only set for classes the user adjusts),
+        // keyed [classTitle] => value.
+        $classPeriods = (array) $request->input('class_periods', []);
+        $classMaxLabs = (array) $request->input('class_maxlabs', []);
 
         // Shared teacher-busy map across ALL selected classes:
         //   $busy[$period][$day][$facultyId] = true
@@ -51,13 +61,23 @@ class TimetableGeneratorController extends Controller
                 }
             }
 
-            $built = $this->buildGrid($records, $days, $lecturesPerDay, $busy);
+            // Use this class's own override if the user set one, else the global value.
+            $periods = isset($classPeriods[$classTitle]) && (int) $classPeriods[$classTitle] > 0
+                ? (int) $classPeriods[$classTitle]
+                : $lecturesPerDay;
+            $maxLabs = isset($classMaxLabs[$classTitle]) && (int) $classMaxLabs[$classTitle] > 0
+                ? (int) $classMaxLabs[$classTitle]
+                : $maxLabsPerDay;
+
+            $built = $this->buildGrid($records, $days, $periods, $busy, $maxLabs);
 
             $reports[] = (object) [
                 'classTitle' => $classTitle,
                 'grid'       => $built['grid'],
                 'placed'     => $built['placed'],
                 'demand'     => $built['demand'],
+                'periods'    => $periods,
+                'maxLabs'    => $maxLabs,
                 'subjects'   => $records, // for the in-grid "Change" dropdowns
             ];
         }
@@ -68,7 +88,8 @@ class TimetableGeneratorController extends Controller
             'days',
             'lecturesPerDay',
             'dayLabels',
-            'userCounts'
+            'userCounts',
+            'maxLabsPerDay'
         ));
     }
 
@@ -83,7 +104,7 @@ class TimetableGeneratorController extends Controller
      *
      * Returns grid[period][day] => ['subject' => ..., 'faculty' => ..., 'is_lab' => bool] | null
      */
-    private function buildGrid($records, int $days, int $periods, array &$busy)
+    private function buildGrid($records, int $days, int $periods, array &$busy, int $maxLabsPerDay = 2)
     {
         // Empty grid.
         $grid = [];
@@ -99,9 +120,8 @@ class TimetableGeneratorController extends Controller
         $demand = count($theory) + (count($labs) * 2);
         $placed = 0;
 
-        // At most this many lab sessions per day for a class.
-        $maxLabsPerDay = 2;
-        $labsOnDay     = array_fill(0, $days, 0);
+        // At most $maxLabsPerDay lab sessions per day for a class.
+        $labsOnDay = array_fill(0, $days, 0);
 
         // --- Place labs first (harder: need two consecutive free periods) ---
         foreach ($labs as $unit) {
