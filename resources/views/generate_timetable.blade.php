@@ -45,6 +45,11 @@
                     <input type="number" id="max_labs_per_day" name="max_labs_per_day"
                            value="{{ $maxLabsPerDay }}" min="1" max="4">
                 </div>
+                <div class="param">
+                    <label for="lunch_after">Lunch After Period</label>
+                    <input type="number" id="lunch_after" name="lunch_after"
+                           value="{{ $lunchAfter }}" min="1" max="11">
+                </div>
                 <button type="submit" class="btn">Apply</button>
             </div>
         </form>
@@ -149,6 +154,13 @@
                                     </td>
                                 @endfor
                             </tr>
+
+                            {{-- 30-minute lunch break, same for all classes --}}
+                            @if($lunchAfter > 0 && ($p + 1) === $lunchAfter && $lunchAfter < $report->periods)
+                                <tr class="lunch-row">
+                                    <td colspan="{{ $days + 1 }}">🍴 Lunch Break — 30 min</td>
+                                </tr>
+                            @endif
                         @endfor
                     </tbody>
                 </table>

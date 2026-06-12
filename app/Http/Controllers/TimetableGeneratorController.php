@@ -27,6 +27,13 @@ class TimetableGeneratorController extends Controller
             $maxLabsPerDay = 2;
         }
 
+        // 30-minute lunch break shown after this period number, same for every
+        // class. Lectures aren't placed in it and labs won't straddle it.
+        $lunchAfter = (int) $request->input('lunch_after', 4);
+        if ($lunchAfter < 1) {
+            $lunchAfter = 4;
+        }
+
         $dayLabels = array_slice(
             ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
             0,
@@ -45,6 +52,11 @@ class TimetableGeneratorController extends Controller
         //   $busy[$period][$day][$facultyId] = true
         // enforces H1 — a teacher can't be in two places in the same slot.
         $busy = [];
+
+        // Shared teacher load per day across ALL classes:
+        //   $teacherLoad[$facultyId][$day] = periods booked that day
+        // used to guarantee every faculty keeps >= 1 free period each day.
+        $teacherLoad = [];
 
         $reports = [];
         foreach ($selected as $classTitle) {
@@ -69,7 +81,7 @@ class TimetableGeneratorController extends Controller
                 ? (int) $classMaxLabs[$classTitle]
                 : $maxLabsPerDay;
 
-            $built = $this->buildGrid($records, $days, $periods, $busy, $maxLabs);
+            $built = $this->buildGrid($records, $days, $periods, $busy, $maxLabs, $lunchAfter, $teacherLoad);
 
             $reports[] = (object) [
                 'classTitle' => $classTitle,
@@ -89,7 +101,8 @@ class TimetableGeneratorController extends Controller
             'lecturesPerDay',
             'dayLabels',
             'userCounts',
-            'maxLabsPerDay'
+            'maxLabsPerDay',
+            'lunchAfter'
         ));
     }
 
@@ -104,8 +117,12 @@ class TimetableGeneratorController extends Controller
      *
      * Returns grid[period][day] => ['subject' => ..., 'faculty' => ..., 'is_lab' => bool] | null
      */
-    private function buildGrid($records, int $days, int $periods, array &$busy, int $maxLabsPerDay = 2)
+    private function buildGrid($records, int $days, int $periods, array &$busy, int $maxLabsPerDay = 2, int $lunchAfter = 0, array &$teacherLoad = [])
     {
+        // A teacher may be booked at most this many periods per day, so at
+        // least one period stays free for them.
+        $maxTeacherPerDay = max(1, $periods - 1);
+
         // Empty grid.
         $grid = [];
         for ($p = 0; $p < $periods; $p++) {
@@ -132,7 +149,16 @@ class TimetableGeneratorController extends Controller
                 if ($labsOnDay[$d] >= $maxLabsPerDay) {
                     continue;
                 }
+                // Keep >= 1 free period for the teacher (a lab uses 2 periods).
+                if ($fid && (($teacherLoad[$fid][$d] ?? 0) + 2) > $maxTeacherPerDay) {
+                    continue;
+                }
                 for ($p = 0; $p < $periods - 1 && !$done; $p++) {
+                    // A lab must not straddle the lunch break (period $lunchAfter
+                    // and $lunchAfter+1 are split by it).
+                    if ($lunchAfter > 0 && $p === $lunchAfter - 1) {
+                        continue;
+                    }
                     // Both periods of the block must be free (H2)...
                     if ($grid[$p][$d] !== null || $grid[$p + 1][$d] !== null) {
                         continue;
@@ -158,6 +184,7 @@ class TimetableGeneratorController extends Controller
                     if ($fid) {
                         $busy[$p][$d][$fid]     = true;
                         $busy[$p + 1][$d][$fid] = true;
+                        $teacherLoad[$fid][$d]  = ($teacherLoad[$fid][$d] ?? 0) + 2;
                     }
                     $labsOnDay[$d]++;
                     $placed += 2;
@@ -178,10 +205,15 @@ class TimetableGeneratorController extends Controller
                     if ($fid && isset($busy[$p][$d][$fid])) {
                         continue; // H1
                     }
+                    // Keep >= 1 free period for the teacher that day.
+                    if ($fid && (($teacherLoad[$fid][$d] ?? 0) + 1) > $maxTeacherPerDay) {
+                        continue;
+                    }
 
                     $grid[$p][$d] = ['subject' => $unit['subject'], 'faculty' => $unit['faculty'], 'is_lab' => false];
                     if ($fid) {
-                        $busy[$p][$d][$fid] = true;
+                        $busy[$p][$d][$fid]    = true;
+                        $teacherLoad[$fid][$d] = ($teacherLoad[$fid][$d] ?? 0) + 1;
                     }
                     $placed++;
                     $done = true;
