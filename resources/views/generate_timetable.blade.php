@@ -60,7 +60,15 @@
             <div class="card-head">
                 <h2 class="report-title">{{ $report->classTitle }}</h2>
                 @if($report->demand !== 0)
-                    <button type="button" class="btn-change" onclick="toggleEdit(this)">Change</button>
+                    <div class="card-actions">
+                        <button type="button" class="btn-change" onclick="toggleEdit(this)">Change</button>
+                        <form method="POST" action="{{ route('timetable.save') }}" class="save-form" style="display:inline;">
+                            @csrf
+                            <input type="hidden" name="class_title" value="{{ $report->classTitle }}">
+                            <input type="hidden" name="timetable" class="save-data">
+                            <button type="button" class="btn-save" onclick="saveTimetable(this)">Save</button>
+                        </form>
+                    </div>
                 @endif
             </div>
 
@@ -105,7 +113,7 @@
                 <table class="grid">
                     <thead>
                         <tr>
-                            <th>Period</th>
+                            <th>Time</th>
                             @foreach($dayLabels as $day)
                                 <th>{{ $day }}</th>
                             @endforeach
@@ -114,9 +122,23 @@
                     <tbody>
                         @for($p = 0; $p < $report->periods; $p++)
                             <tr>
-                                <td><strong>{{ $p + 1 }}</strong></td>
+                                @php $pt = $periodTimes[$p] ?? null; @endphp
+                                <td class="period-cell">
+                                    @if($pt)
+                                        <strong>{{ \Illuminate\Support\Str::substr($pt->StartTime, 0, 5) }}–{{ \Illuminate\Support\Str::substr($pt->EndTime, 0, 5) }}</strong>
+                                        <br><small>{{ $pt->Description }}</small>
+                                    @else
+                                        <strong>Period {{ $p + 1 }}</strong>
+                                    @endif
+                                </td>
                                 @for($d = 0; $d < $days; $d++)
-                                    @php $cell = $report->grid[$p][$d] ?? null; @endphp
+                                    @php
+                                        $cell = $report->grid[$p][$d] ?? null;
+                                        $pt = $periodTimes[$p] ?? null;
+                                        $timeLabel = $pt
+                                            ? \Illuminate\Support\Str::substr($pt->StartTime, 0, 5) . '–' . \Illuminate\Support\Str::substr($pt->EndTime, 0, 5)
+                                            : 'Period ' . ($p + 1);
+                                    @endphp
 
                                     {{-- Bottom half of a lab block is covered by the rowspan above --}}
                                     @if($cell && ($cell['lab_part'] ?? null) === 'bottom')
@@ -124,11 +146,17 @@
                                     @endif
 
                                     <td data-period="{{ $p }}" data-day="{{ $d }}"
+                                        data-day-name="{{ $dayLabels[$d] }}"
+                                        data-time="{{ $timeLabel }}"
+                                        data-desc="{{ $pt->Description ?? '' }}"
                                         data-cur-subject="{{ $cell['subject'] ?? '' }}"
                                         data-cur-faculty="{{ $cell['faculty'] ?? '' }}"
+                                        data-academy-id="{{ $cell['academy_id'] ?? '' }}"
+                                        data-academic-year-id="{{ $cell['academic_year_id'] ?? '' }}"
+                                        data-is-lab="{{ !empty($cell['is_lab']) ? 1 : 0 }}"
                                         onclick="cellClicked(this)"
                                         @if($cell && ($cell['lab_part'] ?? null) === 'top') rowspan="2" @endif
-                                        style="{{ $cell ? '' : 'background:#fafafa;color:#ccc;' }}{{ ($cell['lab_part'] ?? null) === 'top' ? ' vertical-align:middle; background:#fffdf5;' : '' }}">
+                                        style="{{ $cell ? '' : 'background:#fafafa;color:#ccc;' }}{{ ($cell['lab_part'] ?? null) === 'top' ? ' background:#fffdf5; vertical-align:middle;' : '' }}">
                                         {{-- View mode --}}
                                         <span class="cell-view">
                                             @if($cell)
@@ -201,6 +229,30 @@
     }
     function closePopup() {
         document.getElementById('popupOverlay').style.display = 'none';
+    }
+
+    // Gather this class's timetable (including any manual edits) and submit it
+    // to the Save endpoint, which dumps the data.
+    function saveTimetable(btn) {
+        const card = btn.closest('.card');
+        const lectures = [];
+        card.querySelectorAll('td[data-period]').forEach(td => {
+            const subject = td.dataset.curSubject;
+            if (!subject) return; // skip empty slots
+            lectures.push({
+                academy_id:       td.dataset.academyId || '',
+                academic_year_id: td.dataset.academicYearId || '',
+                day:              td.dataset.dayName,
+                time:             td.dataset.time,
+                description:      td.dataset.desc,
+                subject:          subject,
+                faculty:          td.dataset.curFaculty || '',
+                is_lab:           td.dataset.isLab === '1',
+            });
+        });
+        const form = btn.closest('form');
+        form.querySelector('.save-data').value = JSON.stringify(lectures);
+        form.submit();
     }
 
     // Toggle a class card between view and edit mode. In edit mode, clicking a

@@ -81,6 +81,8 @@ trait ResolvesTimetableData
 
             foreach ($bySubject as $sid => $info) {
                 $records[] = (object)[
+                    'academy_id'       => 1335,
+                    'academic_year_id' => $latestYear,
                     'program'      => $program,
                     'semester'     => $semester,
                     'subject_id'   => $sid,

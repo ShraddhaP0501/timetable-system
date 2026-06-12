@@ -10,3 +10,5 @@ Route::get('/lecture-report', [LectureReportController::class, 'index'])
     ->name('lecture.report');
 Route::get('/generate-timetable', [TimetableGeneratorController::class, 'generate'])
     ->name('timetable.generate');
+Route::post('/timetable-save', [TimetableGeneratorController::class, 'save'])
+    ->name('timetable.save');

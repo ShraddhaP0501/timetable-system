@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Controllers\Concerns\ResolvesTimetableData;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class TimetableGeneratorController extends Controller
 {
@@ -39,6 +40,17 @@ class TimetableGeneratorController extends Controller
             0,
             $days
         );
+
+        // Real period times for the grid's left column, from opd_academy_timestamp.
+        // Deduped by start time and ordered, so period index N -> the Nth slot.
+        $periodTimes = DB::table('opd_academy_timestamp')
+            ->where('AcademyID', 1335)
+            ->where('IsDeleted', 0)
+            ->where('IsBreak', 0)
+            ->orderBy('StartTime')
+            ->get(['StartTime', 'EndTime', 'Description'])
+            ->unique('StartTime')
+            ->values();
 
         // User-supplied counts, keyed [classTitle][subjectId][theory|lab] => count.
         $userCounts = (array) $request->input('counts', []);
@@ -102,8 +114,25 @@ class TimetableGeneratorController extends Controller
             'dayLabels',
             'userCounts',
             'maxLabsPerDay',
-            'lunchAfter'
+            'lunchAfter',
+            'periodTimes'
         ));
+    }
+
+    /**
+     * Save a single class's timetable. For now it does NOT write to the
+     * database — it just dumps the data that WOULD be stored, so we can verify
+     * the structure first.
+     */
+    public function save(Request $request)
+    {
+        $lectures = json_decode($request->input('timetable'), true) ?? [];
+
+        dd([
+            'class_title'   => $request->input('class_title'),
+            'total_entries' => count($lectures),
+            'lectures'      => $lectures,
+        ]);
     }
 
     /**
@@ -170,16 +199,20 @@ class TimetableGeneratorController extends Controller
 
                     // Top half spans both rows; bottom half is skipped in the view.
                     $grid[$p][$d] = [
-                        'subject'  => $unit['subject'],
-                        'faculty'  => $unit['faculty'],
-                        'is_lab'   => true,
-                        'lab_part' => 'top',
+                        'subject'          => $unit['subject'],
+                        'faculty'          => $unit['faculty'],
+                        'academy_id'       => $unit['academy_id'],
+                        'academic_year_id' => $unit['academic_year_id'],
+                        'is_lab'           => true,
+                        'lab_part'         => 'top',
                     ];
                     $grid[$p + 1][$d] = [
-                        'subject'  => $unit['subject'],
-                        'faculty'  => $unit['faculty'],
-                        'is_lab'   => true,
-                        'lab_part' => 'bottom',
+                        'subject'          => $unit['subject'],
+                        'faculty'          => $unit['faculty'],
+                        'academy_id'       => $unit['academy_id'],
+                        'academic_year_id' => $unit['academic_year_id'],
+                        'is_lab'           => true,
+                        'lab_part'         => 'bottom',
                     ];
                     if ($fid) {
                         $busy[$p][$d][$fid]     = true;
@@ -210,7 +243,13 @@ class TimetableGeneratorController extends Controller
                         continue;
                     }
 
-                    $grid[$p][$d] = ['subject' => $unit['subject'], 'faculty' => $unit['faculty'], 'is_lab' => false];
+                    $grid[$p][$d] = [
+                        'subject'          => $unit['subject'],
+                        'faculty'          => $unit['faculty'],
+                        'academy_id'       => $unit['academy_id'],
+                        'academic_year_id' => $unit['academic_year_id'],
+                        'is_lab'           => false,
+                    ];
                     if ($fid) {
                         $busy[$p][$d][$fid]    = true;
                         $teacherLoad[$fid][$d] = ($teacherLoad[$fid][$d] ?? 0) + 1;
@@ -236,10 +275,12 @@ class TimetableGeneratorController extends Controller
             $n = $lab ? (int) ($r->lab_week ?? 0) : (int) $r->lecture_week;
             if ($n > 0) {
                 $queues[] = [
-                    'subject'    => $r->subject,
-                    'faculty'    => $r->faculty,
-                    'faculty_id' => $r->faculty_id,
-                    'remaining'  => $n,
+                    'subject'          => $r->subject,
+                    'faculty'          => $r->faculty,
+                    'faculty_id'       => $r->faculty_id,
+                    'academy_id'       => $r->academy_id ?? null,
+                    'academic_year_id' => $r->academic_year_id ?? null,
+                    'remaining'        => $n,
                 ];
             }
         }
@@ -251,9 +292,11 @@ class TimetableGeneratorController extends Controller
             foreach ($queues as &$q) {
                 if ($q['remaining'] > 0) {
                     $units[] = [
-                        'subject'    => $q['subject'],
-                        'faculty'    => $q['faculty'],
-                        'faculty_id' => $q['faculty_id'],
+                        'subject'          => $q['subject'],
+                        'faculty'          => $q['faculty'],
+                        'faculty_id'       => $q['faculty_id'],
+                        'academy_id'       => $q['academy_id'],
+                        'academic_year_id' => $q['academic_year_id'],
                     ];
                     $q['remaining']--;
                     $active = true;
