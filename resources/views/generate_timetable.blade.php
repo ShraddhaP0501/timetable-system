@@ -2,186 +2,7 @@
 <html>
 <head>
     <title>Generate Timetable</title>
-
-    <style>
-        * { box-sizing: border-box; }
-
-        body {
-            font-family: "Segoe UI", Arial, sans-serif;
-            margin: 0;
-            background: #f4f6f9;
-            color: #2c3e50;
-        }
-
-        .container {
-            max-width: 1100px;
-            margin: 0 auto;
-            padding: 30px 20px;
-        }
-
-        .topbar {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 24px;
-        }
-
-        h1 { font-size: 26px; margin: 0; color: #1f2937; }
-
-        .back-link {
-            text-decoration: none;
-            color: #2563eb;
-            font-weight: 600;
-        }
-        .back-link:hover { text-decoration: underline; }
-
-        .card {
-            background: #fff;
-            border: 1px solid #e5e7eb;
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 24px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-        }
-
-        .card-head {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 8px;
-        }
-        .report-title { font-size: 18px; margin: 0; color: #1f2937; }
-
-        .btn-change {
-            padding: 7px 16px;
-            background: #10b981;
-            color: #fff;
-            border: none;
-            border-radius: 6px;
-            font-size: 14px;
-            cursor: pointer;
-        }
-        .btn-change:hover { background: #059669; }
-
-        /* Timetable grid: equal-width day columns so cells/dropdowns aren't cramped */
-        .grid { table-layout: fixed; }
-        .grid th:first-child,
-        .grid td:first-child { width: 60px; text-align: center; }
-        .grid td { vertical-align: top; }
-
-        /* While editing, cells become clickable */
-        .card.editing { box-shadow: 0 0 0 2px #10b981 inset; }
-        .card.editing tbody td { cursor: pointer; }
-        .card.editing tbody td:hover { background: #ecfdf5; outline: 2px solid #10b981; outline-offset: -2px; }
-
-        /* Subject picker modal */
-        .change-popup { width: 440px; text-align: left; }
-        .change-list { max-height: 360px; overflow-y: auto; }
-        .change-option {
-            display: block;
-            width: 100%;
-            text-align: left;
-            padding: 10px 12px;
-            margin-bottom: 8px;
-            border: 1px solid #e5e7eb;
-            border-radius: 8px;
-            background: #fff;
-            cursor: pointer;
-            font-size: 14px;
-            color: #1f2937;
-        }
-        .change-option small { color: #6b7280; }
-        .change-option:hover { background: #eef4ff; border-color: #93c5fd; }
-        .change-option.active { border-color: #2563eb; background: #eff6ff; }
-        .popup-btn-grey { background: #e5e7eb; color: #374151; }
-        .popup-btn-grey:hover { background: #d1d5db; }
-
-        /* Custom popup */
-        .popup-overlay {
-            display: none;
-            position: fixed;
-            inset: 0;
-            background: rgba(17, 24, 39, 0.55);
-            align-items: center;
-            justify-content: center;
-            z-index: 1000;
-        }
-        /* The clash warning must sit ABOVE the subject picker */
-        #popupOverlay { z-index: 1100; }
-        .popup {
-            background: #fff;
-            width: 380px;
-            max-width: 90%;
-            border-radius: 12px;
-            padding: 26px 24px;
-            text-align: center;
-            box-shadow: 0 20px 50px rgba(0,0,0,0.25);
-            animation: popIn 0.15s ease-out;
-        }
-        @keyframes popIn { from { transform: scale(0.92); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-        .popup-icon {
-            width: 46px; height: 46px;
-            margin: 0 auto 14px;
-            border-radius: 50%;
-            background: #fef2f2;
-            color: #dc2626;
-            font-size: 26px;
-            font-weight: bold;
-            line-height: 46px;
-        }
-        .popup-title { margin: 0 0 8px; font-size: 18px; color: #1f2937; }
-        .popup-msg { margin: 0 0 20px; color: #4b5563; font-size: 14px; line-height: 1.5; }
-        .popup-btn {
-            padding: 9px 28px;
-            background: #2563eb;
-            color: #fff;
-            border: none;
-            border-radius: 6px;
-            font-size: 15px;
-            cursor: pointer;
-        }
-        .popup-btn:hover { background: #1d4ed8; }
-
-        table { width: 100%; border-collapse: collapse; font-size: 14px; }
-
-        th, td { padding: 12px 14px; text-align: left; border-bottom: 1px solid #eee; }
-
-        thead th {
-            background: #f3f4f6;
-            color: #374151;
-            font-weight: 600;
-            text-transform: uppercase;
-            font-size: 12px;
-            letter-spacing: 0.4px;
-        }
-
-        tbody tr:nth-child(even) { background: #fafbfc; }
-        tbody tr:hover { background: #eef4ff; }
-
-        .empty { text-align: center; color: #9ca3af; padding: 18px; }
-        .hint  { color: #6b7280; }
-
-        .params { display: flex; align-items: flex-end; gap: 24px; flex-wrap: wrap; }
-        .param { display: flex; flex-direction: column; }
-        .param label { font-weight: 600; margin-bottom: 6px; color: #374151; }
-        .param input {
-            width: 140px;
-            padding: 9px 10px;
-            border: 1px solid #d1d5db;
-            border-radius: 6px;
-            font-size: 14px;
-        }
-        .btn {
-            padding: 10px 22px;
-            background: #2563eb;
-            color: #fff;
-            border: none;
-            border-radius: 6px;
-            font-size: 15px;
-            cursor: pointer;
-        }
-        .btn:hover { background: #1d4ed8; }
-    </style>
+    <link rel="stylesheet" href="{{ asset('css/generate_timetable.css') }}">
 </head>
 <body>
 
@@ -200,10 +21,12 @@
                 <input type="hidden" name="classes[]" value="{{ $classTitle }}">
             @endforeach
 
-            {{-- keep the user's per-subject lecture counts when applying parameters --}}
-            @foreach($userLectures as $classTitle => $subjectCounts)
-                @foreach($subjectCounts as $subjectId => $count)
-                    <input type="hidden" name="lectures[{{ $classTitle }}][{{ $subjectId }}]" value="{{ $count }}">
+            {{-- keep the user's per-subject theory/lab counts when applying parameters --}}
+            @foreach($userCounts as $classTitle => $subjects)
+                @foreach($subjects as $subjectId => $types)
+                    @foreach($types as $type => $count)
+                        <input type="hidden" name="counts[{{ $classTitle }}][{{ $subjectId }}][{{ $type }}]" value="{{ $count }}">
+                    @endforeach
                 @endforeach
             @endforeach
 
@@ -235,7 +58,8 @@
                 <p class="empty">No timetable data for this class.</p>
             @else
                 <p class="hint">
-                    Placed {{ $report->placed }} of {{ $report->demand }} lectures
+                    Placed {{ $report->placed }} of {{ $report->demand }} periods
+                    <small>(each lab = 2 consecutive periods)</small>
                     @if($report->placed < $report->demand)
                         — increase Lectures per Day to fit the rest.
                     @endif
@@ -256,15 +80,23 @@
                                 <td><strong>{{ $p + 1 }}</strong></td>
                                 @for($d = 0; $d < $days; $d++)
                                     @php $cell = $report->grid[$p][$d] ?? null; @endphp
+
+                                    {{-- Bottom half of a lab block is covered by the rowspan above --}}
+                                    @if($cell && ($cell['lab_part'] ?? null) === 'bottom')
+                                        @continue
+                                    @endif
+
                                     <td data-period="{{ $p }}" data-day="{{ $d }}"
                                         data-cur-subject="{{ $cell['subject'] ?? '' }}"
                                         data-cur-faculty="{{ $cell['faculty'] ?? '' }}"
                                         onclick="cellClicked(this)"
-                                        style="{{ $cell ? '' : 'background:#fafafa;color:#ccc;' }}">
+                                        @if($cell && ($cell['lab_part'] ?? null) === 'top') rowspan="2" @endif
+                                        style="{{ $cell ? '' : 'background:#fafafa;color:#ccc;' }}{{ ($cell['lab_part'] ?? null) === 'top' ? ' vertical-align:middle; background:#fffdf5;' : '' }}">
                                         {{-- View mode --}}
                                         <span class="cell-view">
                                             @if($cell)
                                                 {{ $cell['subject'] }}
+                                                @if(!empty($cell['is_lab'])) <span class="lab-tag">Lab · 2 hrs</span> @endif
                                                 <br><small style="color:#6b7280;">{{ $cell['faculty'] }}</small>
                                             @else
                                                 —
