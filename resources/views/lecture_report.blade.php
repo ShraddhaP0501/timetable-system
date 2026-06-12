@@ -163,7 +163,13 @@
                             <td>{{ $row->program }}</td>
                             <td>{{ $row->semester }}</td>
                             <td>{{ $row->subject }}</td>
-                            <td>{{ $row->lecture_week }}</td>
+                            <td>
+                                <input type="number" min="0" max="60"
+                                       form="reportForm"
+                                       name="lectures[{{ $report->classTitle }}][{{ $row->subject_id }}]"
+                                       value="{{ $row->lecture_week }}"
+                                       style="width:80px; padding:6px; border:1px solid #d1d5db; border-radius:4px;">
+                            </td>
                         </tr>
                     @empty
                         <tr>

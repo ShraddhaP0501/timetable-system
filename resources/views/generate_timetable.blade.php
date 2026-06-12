@@ -63,7 +63,84 @@
         }
         .btn-change:hover { background: #059669; }
 
-        .cell-edit { width: 100%; padding: 4px; }
+        /* Timetable grid: equal-width day columns so cells/dropdowns aren't cramped */
+        .grid { table-layout: fixed; }
+        .grid th:first-child,
+        .grid td:first-child { width: 60px; text-align: center; }
+        .grid td { vertical-align: top; }
+
+        /* While editing, cells become clickable */
+        .card.editing { box-shadow: 0 0 0 2px #10b981 inset; }
+        .card.editing tbody td { cursor: pointer; }
+        .card.editing tbody td:hover { background: #ecfdf5; outline: 2px solid #10b981; outline-offset: -2px; }
+
+        /* Subject picker modal */
+        .change-popup { width: 440px; text-align: left; }
+        .change-list { max-height: 360px; overflow-y: auto; }
+        .change-option {
+            display: block;
+            width: 100%;
+            text-align: left;
+            padding: 10px 12px;
+            margin-bottom: 8px;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            background: #fff;
+            cursor: pointer;
+            font-size: 14px;
+            color: #1f2937;
+        }
+        .change-option small { color: #6b7280; }
+        .change-option:hover { background: #eef4ff; border-color: #93c5fd; }
+        .change-option.active { border-color: #2563eb; background: #eff6ff; }
+        .popup-btn-grey { background: #e5e7eb; color: #374151; }
+        .popup-btn-grey:hover { background: #d1d5db; }
+
+        /* Custom popup */
+        .popup-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(17, 24, 39, 0.55);
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        /* The clash warning must sit ABOVE the subject picker */
+        #popupOverlay { z-index: 1100; }
+        .popup {
+            background: #fff;
+            width: 380px;
+            max-width: 90%;
+            border-radius: 12px;
+            padding: 26px 24px;
+            text-align: center;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.25);
+            animation: popIn 0.15s ease-out;
+        }
+        @keyframes popIn { from { transform: scale(0.92); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        .popup-icon {
+            width: 46px; height: 46px;
+            margin: 0 auto 14px;
+            border-radius: 50%;
+            background: #fef2f2;
+            color: #dc2626;
+            font-size: 26px;
+            font-weight: bold;
+            line-height: 46px;
+        }
+        .popup-title { margin: 0 0 8px; font-size: 18px; color: #1f2937; }
+        .popup-msg { margin: 0 0 20px; color: #4b5563; font-size: 14px; line-height: 1.5; }
+        .popup-btn {
+            padding: 9px 28px;
+            background: #2563eb;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            font-size: 15px;
+            cursor: pointer;
+        }
+        .popup-btn:hover { background: #1d4ed8; }
 
         table { width: 100%; border-collapse: collapse; font-size: 14px; }
 
@@ -123,6 +200,13 @@
                 <input type="hidden" name="classes[]" value="{{ $classTitle }}">
             @endforeach
 
+            {{-- keep the user's per-subject lecture counts when applying parameters --}}
+            @foreach($userLectures as $classTitle => $subjectCounts)
+                @foreach($subjectCounts as $subjectId => $count)
+                    <input type="hidden" name="lectures[{{ $classTitle }}][{{ $subjectId }}]" value="{{ $count }}">
+                @endforeach
+            @endforeach
+
             <div class="params">
                 <div class="param">
                     <label>Number of Days</label>
@@ -157,7 +241,7 @@
                     @endif
                 </p>
 
-                <table>
+                <table class="grid">
                     <thead>
                         <tr>
                             <th>Period</th>
@@ -175,6 +259,7 @@
                                     <td data-period="{{ $p }}" data-day="{{ $d }}"
                                         data-cur-subject="{{ $cell['subject'] ?? '' }}"
                                         data-cur-faculty="{{ $cell['faculty'] ?? '' }}"
+                                        onclick="cellClicked(this)"
                                         style="{{ $cell ? '' : 'background:#fafafa;color:#ccc;' }}">
                                         {{-- View mode --}}
                                         <span class="cell-view">
@@ -186,8 +271,8 @@
                                             @endif
                                         </span>
 
-                                        {{-- Edit mode (hidden until "Change") --}}
-                                        <select class="cell-edit" style="display:none;" onchange="updateCell(this)">
+                                        {{-- Hidden data source for the picker modal --}}
+                                        <select class="cell-edit" style="display:none;">
                                             <option value="">—</option>
                                             @foreach($report->subjects as $s)
                                                 <option value="{{ $s->subject }}"
@@ -211,14 +296,103 @@
 
 </div>
 
+{{-- Custom popup for teacher-clash warnings --}}
+<div id="popupOverlay" class="popup-overlay">
+    <div class="popup">
+        <div class="popup-icon">!</div>
+        <h3 class="popup-title">Faculty not available</h3>
+        <p class="popup-msg" id="popupMsg"></p>
+        <button type="button" class="popup-btn" onclick="closePopup()">OK</button>
+    </div>
+</div>
+
+{{-- Subject picker modal (opened by clicking a cell in edit mode) --}}
+<div id="changeOverlay" class="popup-overlay">
+    <div class="popup change-popup">
+        <h3 class="popup-title">Select Subject</h3>
+        <div id="changeList" class="change-list"></div>
+        <div style="text-align:right; margin-top:14px;">
+            <button type="button" class="popup-btn popup-btn-grey" onclick="closeChange()">Cancel</button>
+        </div>
+    </div>
+</div>
+
 <script>
-    // Toggle a single class card between view and edit (Change) mode.
+    // Custom warning popup.
+    function showPopup(html) {
+        document.getElementById('popupMsg').innerHTML = html;
+        document.getElementById('popupOverlay').style.display = 'flex';
+    }
+    function closePopup() {
+        document.getElementById('popupOverlay').style.display = 'none';
+    }
+
+    // Toggle a class card between view and edit mode. In edit mode, clicking a
+    // cell opens the subject picker.
     function toggleEdit(btn) {
         const card = btn.closest('.card');
         const editing = card.classList.toggle('editing');
-        card.querySelectorAll('.cell-view').forEach(el => el.style.display = editing ? 'none' : '');
-        card.querySelectorAll('.cell-edit').forEach(el => el.style.display = editing ? '' : 'none');
         btn.textContent = editing ? 'Done' : 'Change';
+    }
+
+    // --- Subject picker modal ---
+    let activeTd = null;
+
+    function cellClicked(td) {
+        // Only react while this cell's card is in edit mode.
+        if (!td.closest('.card').classList.contains('editing')) return;
+
+        activeTd = td;
+        const sel  = td.querySelector('.cell-edit');
+        const list = document.getElementById('changeList');
+        list.innerHTML = '';
+
+        Array.from(sel.options).forEach(opt => {
+            const faculty = opt.getAttribute('data-faculty') || '';
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'change-option' + (opt.value === td.dataset.curSubject ? ' active' : '');
+            btn.innerHTML = opt.value
+                ? '<strong>' + opt.value + '</strong>' + (faculty ? '<br><small>' + faculty + '</small>' : '')
+                : '<em>— (clear slot)</em>';
+            btn.onclick = () => chooseSubject(opt.value, faculty);
+            list.appendChild(btn);
+        });
+
+        document.getElementById('changeOverlay').style.display = 'flex';
+    }
+
+    function closeChange() {
+        document.getElementById('changeOverlay').style.display = 'none';
+        activeTd = null;
+    }
+
+    function chooseSubject(subject, faculty) {
+        const td = activeTd;
+        if (!td) return;
+
+        // Teacher availability (H1) check.
+        if (subject && faculty) {
+            const clashTd = facultyClash(td.dataset.period, td.dataset.day, faculty, td);
+            if (clashTd) {
+                showPopup(
+                    '<strong>' + faculty + '</strong> is already teaching ' +
+                    '<strong>' + clashTd.dataset.curSubject + '</strong> in this period. ' +
+                    'Pick a different subject or slot.'
+                );
+                return; // keep the picker open
+            }
+        }
+
+        // Apply.
+        td.dataset.curSubject = subject;
+        td.dataset.curFaculty = faculty;
+        td.querySelector('.cell-edit').value = subject;
+        td.querySelector('.cell-view').innerHTML = subject
+            ? subject + '<br><small style="color:#6b7280;">' + faculty + '</small>'
+            : '—';
+
+        closeChange();
     }
 
     // Is this faculty already assigned in the same (period, day) in ANY class?
@@ -234,35 +408,6 @@
         return null;
     }
 
-    // Replace a cell's subject + faculty when a dropdown changes.
-    function updateCell(sel) {
-        const td = sel.closest('td');
-        const view = td.querySelector('.cell-view');
-        const subject = sel.value;
-        const faculty = sel.options[sel.selectedIndex].getAttribute('data-faculty') || '';
-
-        // Check teacher availability (H1) before applying.
-        if (subject && faculty) {
-            const clashTd = facultyClash(td.dataset.period, td.dataset.day, faculty, td);
-            if (clashTd) {
-                alert(
-                    'Faculty "' + faculty + '" is not available in this slot.\n' +
-                    'Already teaching "' + clashTd.dataset.curSubject + '" at the same period/day.'
-                );
-                sel.value = td.dataset.curSubject; // revert the dropdown
-                return;
-            }
-        }
-
-        // Apply the change.
-        td.dataset.curSubject = subject;
-        td.dataset.curFaculty = faculty;
-        if (subject) {
-            view.innerHTML = subject + '<br><small style="color:#6b7280;">' + faculty + '</small>';
-        } else {
-            view.innerHTML = '—';
-        }
-    }
 </script>
 
 </body>

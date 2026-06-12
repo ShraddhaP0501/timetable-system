@@ -53,6 +53,9 @@ class LectureReportController extends Controller
             $days
         );
 
+        // User-supplied lectures/week, keyed [classTitle][subjectId] => count.
+        $userLectures = (array) $request->input('lectures', []);
+
         // Shared teacher-busy map across ALL selected classes:
         //   $busy[$period][$day][$facultyId] = true
         // enforces H1 — a teacher can't be in two places in the same slot.
@@ -61,6 +64,15 @@ class LectureReportController extends Controller
         $reports = [];
         foreach ($selected as $classTitle) {
             $records = $this->getTimetableData($classTitle);
+
+            // Override each subject's weekly count with the value the user typed
+            // on the Lecture Report (if provided).
+            foreach ($records as $r) {
+                if (isset($userLectures[$classTitle][$r->subject_id])) {
+                    $r->lecture_week = max(0, (int) $userLectures[$classTitle][$r->subject_id]);
+                }
+            }
+
             $built   = $this->buildGrid($records, $days, $lecturesPerDay, $busy);
 
             $reports[] = (object) [
@@ -77,7 +89,8 @@ class LectureReportController extends Controller
             'reports',
             'days',
             'lecturesPerDay',
-            'dayLabels'
+            'dayLabels',
+            'userLectures'
         ));
     }
 
@@ -229,6 +242,7 @@ class LectureReportController extends Controller
                 $records[] = (object)[
                     'program'      => $program,
                     'semester'     => $semester,
+                    'subject_id'   => $sid,
                     'subject'      => $info['name'] ?: ('Subject #' . $sid),
                     'faculty'      => $info['facName'] ?: 'Unassigned',
                     'faculty_id'   => $info['facId'],
