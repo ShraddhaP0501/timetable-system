@@ -158,13 +158,14 @@ class TimetableGeneratorController extends Controller
             $grid[$p] = array_fill(0, $days, null);
         }
 
+        $placed = 0;
+
         // Build interleaved unit lists (round-robin across subjects for spread).
         $theory = $this->interleaveUnits($records, false); // 1 period each
         $labs   = $this->interleaveUnits($records, true);   // 2 consecutive periods each
 
         // Each lab takes 2 periods; theory takes 1.
         $demand = count($theory) + (count($labs) * 2);
-        $placed = 0;
 
         // At most $maxLabsPerDay lab sessions per day for a class.
         $labsOnDay = array_fill(0, $days, 0);
