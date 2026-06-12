@@ -11,6 +11,52 @@ use Illuminate\Support\Facades\DB;
  */
 trait ResolvesTimetableData
 {
+    /**
+     * Resolve the class teacher for a class. The flag lives on
+     * opd_faculty_master.IsClassTeacher, matched to the class by
+     * AcademyID + StandardID + DivisionID. That table has no UID, so we map to
+     * opd_users by email to get the faculty UID used elsewhere.
+     *
+     * Only an exact match with IsClassTeacher = 1 produces a class teacher;
+     * otherwise returns ['name' => null, 'uid' => null].
+     */
+    protected function getClassTeacher($classTitle)
+    {
+        $class = DB::table('opd_academy_timetable')
+            ->where('AcademyID', 1335)
+            ->where('IsDeleted', 0)
+            ->where('classTitle', $classTitle)
+            ->first(['StandardID', 'DivisionID']);
+
+        if (!$class) {
+            return ['name' => null, 'uid' => null];
+        }
+
+        $fm = DB::table('opd_faculty_master')
+            ->where('AcademyID', 1335)
+            ->where('StandardID', $class->StandardID)
+            ->where('DivisionID', $class->DivisionID)
+            ->where('IsClassTeacher', 1)
+            ->where('IsDeleted', 0)
+            ->first(['FirstName', 'MiddleName', 'LastName', 'EmailAddress']);
+
+        if (!$fm) {
+            return ['name' => null, 'uid' => null];
+        }
+
+        $name = trim(preg_replace('/\s+/', ' ', $fm->FirstName . ' ' . $fm->MiddleName . ' ' . $fm->LastName));
+
+        $uid = null;
+        if ($fm->EmailAddress) {
+            $uid = DB::table('opd_users')
+                ->where('email', $fm->EmailAddress)
+                ->orWhere('EmailID', $fm->EmailAddress)
+                ->value('UID');
+        }
+
+        return ['name' => $name ?: null, 'uid' => $uid];
+    }
+
     protected function getTimetableData($classTitle)
     {
         $records = [];

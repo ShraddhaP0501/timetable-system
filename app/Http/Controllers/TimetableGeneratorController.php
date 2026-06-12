@@ -74,6 +74,10 @@ class TimetableGeneratorController extends Controller
         foreach ($selected as $classTitle) {
             $records = $this->getTimetableData($classTitle);
 
+            // The class teacher of this class (from opd_faculty_master). They get
+            // a "Class Teacher" slot in the first period of every day.
+            $classTeacher = $this->getClassTeacher($classTitle);
+
             // Override each subject's theory/lab counts with the values the
             // user typed on the Lecture Report (if provided).
             foreach ($records as $r) {
@@ -93,7 +97,7 @@ class TimetableGeneratorController extends Controller
                 ? (int) $classMaxLabs[$classTitle]
                 : $maxLabsPerDay;
 
-            $built = $this->buildGrid($records, $days, $periods, $busy, $maxLabs, $lunchAfter, $teacherLoad);
+            $built = $this->buildGrid($records, $days, $periods, $busy, $maxLabs, $lunchAfter, $teacherLoad, $classTeacher);
 
             $reports[] = (object) [
                 'classTitle' => $classTitle,
@@ -103,6 +107,7 @@ class TimetableGeneratorController extends Controller
                 'periods'    => $periods,
                 'maxLabs'    => $maxLabs,
                 'subjects'   => $records, // for the in-grid "Change" dropdowns
+                'classTeacher' => $classTeacher['name'] ?? null,
             ];
         }
 
@@ -146,7 +151,7 @@ class TimetableGeneratorController extends Controller
      *
      * Returns grid[period][day] => ['subject' => ..., 'faculty' => ..., 'is_lab' => bool] | null
      */
-    private function buildGrid($records, int $days, int $periods, array &$busy, int $maxLabsPerDay = 2, int $lunchAfter = 0, array &$teacherLoad = [])
+    private function buildGrid($records, int $days, int $periods, array &$busy, int $maxLabsPerDay = 2, int $lunchAfter = 0, array &$teacherLoad = [], $classTeacher = null)
     {
         // A teacher may be booked at most this many periods per day, so at
         // least one period stays free for them.
@@ -160,12 +165,66 @@ class TimetableGeneratorController extends Controller
 
         $placed = 0;
 
+        // --- Pin the class teacher to the FIRST period of every day ---
+        // The class teacher has no subject of their own in the data, so they are
+        // given ONE subject of this class (prefer one with theory lectures). This
+        // runs before everything else so it always wins period 0. The shared
+        // $busy map keeps H1 intact across classes.
+        $ctPrePlaced = 0;
+        $ctName = $classTeacher['name'] ?? null;
+        $ctUid  = $classTeacher['uid'] ?? null;
+
+        if ($ctName) {
+            // Choose one subject of this class for the class teacher.
+            $ctSubject = null;
+            foreach ($records as $r) {
+                if ($ctSubject === null) {
+                    $ctSubject = $r;
+                }
+                if ((int) $r->lecture_week > 0) {
+                    $ctSubject = $r; // prefer a subject that has theory lectures
+                    break;
+                }
+            }
+
+            if ($ctSubject) {
+                for ($d = 0; $d < $days; $d++) {
+                    // Class slot must be free and the teacher free in that slot (H1/H2).
+                    if ($grid[0][$d] !== null) {
+                        continue;
+                    }
+                    if ($ctUid && isset($busy[0][$d][$ctUid])) {
+                        continue;
+                    }
+
+                    $grid[0][$d] = [
+                        'subject'          => $ctSubject->subject,
+                        'faculty'          => $ctName,
+                        'academy_id'       => $ctSubject->academy_id ?? null,
+                        'academic_year_id' => $ctSubject->academic_year_id ?? null,
+                        'is_lab'           => false,
+                        'class_teacher'    => true,
+                    ];
+                    if ($ctUid) {
+                        $busy[0][$d][$ctUid]     = true;
+                        $teacherLoad[$ctUid][$d] = ($teacherLoad[$ctUid][$d] ?? 0) + 1;
+                    }
+                    $placed++;
+                    $ctPrePlaced++;
+                }
+
+                // Don't re-place these lectures in the normal theory fill: reduce
+                // the chosen subject's remaining theory count by what we pinned.
+                $ctSubject->lecture_week = max(0, (int) $ctSubject->lecture_week - $ctPrePlaced);
+            }
+        }
+
         // Build interleaved unit lists (round-robin across subjects for spread).
         $theory = $this->interleaveUnits($records, false); // 1 period each
         $labs   = $this->interleaveUnits($records, true);   // 2 consecutive periods each
 
-        // Each lab takes 2 periods; theory takes 1.
-        $demand = count($theory) + (count($labs) * 2);
+        // Each lab takes 2 periods; theory takes 1. Pinned first-periods count too.
+        $demand = $ctPrePlaced + count($theory) + (count($labs) * 2);
 
         // At most $maxLabsPerDay lab sessions per day for a class.
         $labsOnDay = array_fill(0, $days, 0);

@@ -58,7 +58,12 @@
     @forelse($reports as $report)
         <div class="card">
             <div class="card-head">
-                <h2 class="report-title">{{ $report->classTitle }}</h2>
+                <div>
+                    <h2 class="report-title">{{ $report->classTitle }}</h2>
+                    @if(!empty($report->classTeacher))
+                        <small class="ct-line">Class Teacher: <strong>{{ $report->classTeacher }}</strong></small>
+                    @endif
+                </div>
                 @if($report->demand !== 0)
                     <div class="card-actions">
                         <button type="button" class="btn-change" onclick="toggleEdit(this)">Change</button>
@@ -162,6 +167,7 @@
                                             @if($cell)
                                                 {{ $cell['subject'] }}
                                                 @if(!empty($cell['is_lab'])) <span class="lab-tag">Lab · 2 hrs</span> @endif
+                                                @if(!empty($cell['class_teacher'])) <span class="ct-tag">Class Teacher</span> @endif
                                                 <br><small style="color:#6b7280;">{{ $cell['faculty'] }}</small>
                                             @else
                                                 —
