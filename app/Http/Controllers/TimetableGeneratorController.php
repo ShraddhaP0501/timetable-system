@@ -111,6 +111,63 @@ class TimetableGeneratorController extends Controller
             ];
         }
 
+        // Pivot the per-class grids into per-faculty grids. Each cell already
+        // carries the faculty, and H1 guarantees a teacher is never booked in
+        // two classes in the same (period, day) — so this pivot is lossless:
+        //   $facultyGrids[facultyName][period][day] = ['class','subject','is_lab','lab_part']
+        $facultyGrids = [];
+        foreach ($reports as $report) {
+            foreach ($report->grid as $p => $dayRow) {
+                foreach ($dayRow as $d => $cell) {
+                    if (!$cell) {
+                        continue;
+                    }
+                    $faculty = $cell['faculty'] ?: 'Unassigned';
+                    $facultyGrids[$faculty][$p][$d] = [
+                        'class'    => $report->classTitle,
+                        'subject'  => $cell['subject'],
+                        'is_lab'   => !empty($cell['is_lab']),
+                        'lab_part' => $cell['lab_part'] ?? null,
+                    ];
+                }
+            }
+        }
+        ksort($facultyGrids); // alphabetical teacher order
+
+        // Distinct class+subject pairs each teacher CAN teach (every subject they
+        // hold across the selected classes, not just the slots already placed) —
+        // used to populate the "Change" picker in their faculty grid.
+        $facultyOptions = [];
+        $addOpt = function (&$opts, $class, $subject, $isLab) {
+            $key = $class . '|' . $subject;
+            if (!isset($opts[$key])) {
+                $opts[$key] = ['class' => $class, 'subject' => $subject, 'is_lab' => $isLab];
+            }
+        };
+
+        // (a) Every subject each teacher has in each selected class.
+        foreach ($reports as $report) {
+            foreach ($report->subjects as $r) {
+                $name = $r->faculty ?: 'Unassigned';
+                $isLab = (int) ($r->lab_week ?? 0) > 0 && (int) $r->lecture_week === 0;
+                $addOpt($facultyOptions[$name], $report->classTitle, $r->subject, $isLab);
+            }
+        }
+
+        // (b) Make sure anyone who appears in a faculty grid (e.g. a class
+        // teacher pinned to a slot) also has at least their own options.
+        foreach ($facultyGrids as $facultyName => $fgrid) {
+            foreach ($fgrid as $row) {
+                foreach ($row as $c) {
+                    $addOpt($facultyOptions[$facultyName], $c['class'], $c['subject'], $c['is_lab']);
+                }
+            }
+        }
+
+        foreach ($facultyOptions as $name => $opts) {
+            $facultyOptions[$name] = array_values($opts);
+        }
+
         return view('generate_timetable', compact(
             'selected',
             'reports',
@@ -120,7 +177,9 @@ class TimetableGeneratorController extends Controller
             'userCounts',
             'maxLabsPerDay',
             'lunchAfter',
-            'periodTimes'
+            'periodTimes',
+            'facultyGrids',
+            'facultyOptions'
         ));
     }
 
@@ -135,6 +194,7 @@ class TimetableGeneratorController extends Controller
 
         dd([
             'class_title'   => $request->input('class_title'),
+            'faculty_name'  => $request->input('faculty_name'),
             'total_entries' => count($lectures),
             'lectures'      => $lectures,
         ]);

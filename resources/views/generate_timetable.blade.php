@@ -115,7 +115,7 @@
                     @endif
                 @endif
 
-                <table class="grid">
+                <table class="grid cls-grid">
                     <thead>
                         <tr>
                             <th>Time</th>
@@ -150,7 +150,8 @@
                                         @continue
                                     @endif
 
-                                    <td data-period="{{ $p }}" data-day="{{ $d }}"
+                                    <td class="fac-cell {{ $cell ? 'filled' : 'free' }}{{ !empty($cell['is_lab']) ? ' is-lab' : '' }}{{ !empty($cell['class_teacher']) ? ' is-ct' : '' }}"
+                                        data-period="{{ $p }}" data-day="{{ $d }}"
                                         data-day-name="{{ $dayLabels[$d] }}"
                                         data-time="{{ $timeLabel }}"
                                         data-desc="{{ $pt->Description ?? '' }}"
@@ -160,17 +161,18 @@
                                         data-academic-year-id="{{ $cell['academic_year_id'] ?? '' }}"
                                         data-is-lab="{{ !empty($cell['is_lab']) ? 1 : 0 }}"
                                         onclick="cellClicked(this)"
-                                        @if($cell && ($cell['lab_part'] ?? null) === 'top') rowspan="2" @endif
-                                        style="{{ $cell ? '' : 'background:#fafafa;color:#ccc;' }}{{ ($cell['lab_part'] ?? null) === 'top' ? ' background:#fffdf5; vertical-align:middle;' : '' }}">
+                                        @if($cell && ($cell['lab_part'] ?? null) === 'top') rowspan="2" @endif>
                                         {{-- View mode --}}
                                         <span class="cell-view">
                                             @if($cell)
-                                                {{ $cell['subject'] }}
-                                                @if(!empty($cell['is_lab'])) <span class="lab-tag">Lab · 2 hrs</span> @endif
-                                                @if(!empty($cell['class_teacher'])) <span class="ct-tag">Class Teacher</span> @endif
-                                                <br><small style="color:#6b7280;">{{ $cell['faculty'] }}</small>
+                                                <span class="lesson">
+                                                    <span class="lesson-class">{{ $cell['subject'] }}</span>
+                                                    @if(!empty($cell['is_lab'])) <span class="lab-tag">Lab · 2 hrs</span> @endif
+                                                    @if(!empty($cell['class_teacher'])) <span class="ct-tag">Class Teacher</span> @endif
+                                                    <span class="lesson-subject">{{ $cell['faculty'] }}</span>
+                                                </span>
                                             @else
-                                                —
+                                                <span class="free-dash">—</span>
                                             @endif
                                         </span>
 
@@ -203,6 +205,111 @@
     @empty
         <p class="hint">No classes were selected. Go back and pick classes first.</p>
     @endforelse
+
+    {{-- Faculty-wise timetables: the same lectures pivoted by teacher --}}
+    @if(!empty($facultyGrids))
+        <h1 style="margin-top:32px; text-align:center;">Faculty-wise Timetables</h1>
+
+        @foreach($facultyGrids as $facultyName => $fgrid)
+            <div class="card">
+                <div class="card-head">
+                    <h2 class="report-title">{{ $facultyName }}</h2>
+                    <div class="card-actions">
+                        <button type="button" class="btn-change" onclick="toggleEdit(this)">Change</button>
+                        <form method="POST" action="{{ route('timetable.save') }}" class="save-form" style="display:inline;">
+                            @csrf
+                            <input type="hidden" name="faculty_name" value="{{ $facultyName }}">
+                            <input type="hidden" name="timetable" class="save-data">
+                            <button type="button" class="btn-save" onclick="saveFacultyTimetable(this)">Save</button>
+                        </form>
+                    </div>
+                </div>
+
+                <table class="grid fac-grid">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            @foreach($dayLabels as $day)
+                                <th>{{ $day }}</th>
+                            @endforeach
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @for($p = 0; $p < $lecturesPerDay; $p++)
+                            <tr>
+                                @php $pt = $periodTimes[$p] ?? null; @endphp
+                                <td class="period-cell">
+                                    @if($pt)
+                                        <strong>{{ \Illuminate\Support\Str::substr($pt->StartTime, 0, 5) }}–{{ \Illuminate\Support\Str::substr($pt->EndTime, 0, 5) }}</strong>
+                                        <br><small>{{ $pt->Description }}</small>
+                                    @else
+                                        <strong>Period {{ $p + 1 }}</strong>
+                                    @endif
+                                </td>
+
+                                @for($d = 0; $d < $days; $d++)
+                                    @php
+                                        $cell = $fgrid[$p][$d] ?? null;
+                                        $timeLabel = $pt
+                                            ? \Illuminate\Support\Str::substr($pt->StartTime, 0, 5) . '–' . \Illuminate\Support\Str::substr($pt->EndTime, 0, 5)
+                                            : 'Period ' . ($p + 1);
+                                    @endphp
+
+                                    {{-- Bottom half of a lab block is covered by the rowspan above --}}
+                                    @if($cell && ($cell['lab_part'] ?? null) === 'bottom')
+                                        @continue
+                                    @endif
+
+                                    <td class="fac-cell {{ $cell ? 'filled' : 'free' }}{{ !empty($cell['is_lab']) ? ' is-lab' : '' }}"
+                                        data-period="{{ $p }}" data-day="{{ $d }}"
+                                        data-day-name="{{ $dayLabels[$d] }}"
+                                        data-time="{{ $timeLabel }}"
+                                        data-desc="{{ $pt->Description ?? '' }}"
+                                        data-cur-class="{{ $cell['class'] ?? '' }}"
+                                        data-cur-subject="{{ $cell['subject'] ?? '' }}"
+                                        data-is-lab="{{ !empty($cell['is_lab']) ? 1 : 0 }}"
+                                        onclick="facCellClicked(this)"
+                                        @if($cell && ($cell['lab_part'] ?? null) === 'top') rowspan="2" @endif>
+                                        <span class="cell-view">
+                                            @if($cell)
+                                                <span class="lesson">
+                                                    <span class="lesson-class">{{ $cell['class'] }}</span>
+                                                    @if($cell['is_lab']) <span class="lab-tag">Lab · 2 hrs</span> @endif
+                                                    <span class="lesson-subject">{{ $cell['subject'] }}</span>
+                                                </span>
+                                            @else
+                                                <span class="free-dash">—</span>
+                                            @endif
+                                        </span>
+
+                                        {{-- Picker options: distinct class+subject pairs this teacher handles --}}
+                                        <select class="cell-edit" style="display:none;">
+                                            <option value="">—</option>
+                                            @foreach($facultyOptions[$facultyName] as $o)
+                                                <option value="{{ $o['subject'] }}"
+                                                        data-class="{{ $o['class'] }}"
+                                                        data-lab="{{ $o['is_lab'] ? 1 : 0 }}"
+                                                        {{ $cell && $cell['class'] === $o['class'] && $cell['subject'] === $o['subject'] ? 'selected' : '' }}>
+                                                    {{ $o['class'] }} — {{ $o['subject'] }}
+                                                </option>
+                                            @endforeach
+                                        </select>
+                                    </td>
+                                @endfor
+                            </tr>
+
+                            {{-- 30-minute lunch break, same for all faculty --}}
+                            @if($lunchAfter > 0 && ($p + 1) === $lunchAfter && $lunchAfter < $lecturesPerDay)
+                                <tr class="lunch-row">
+                                    <td colspan="{{ $days + 1 }}">🍴 Lunch Break — 30 min</td>
+                                </tr>
+                            @endif
+                        @endfor
+                    </tbody>
+                </table>
+            </div>
+        @endforeach
+    @endif
 
 </div>
 
@@ -322,11 +429,87 @@
         td.dataset.curSubject = subject;
         td.dataset.curFaculty = faculty;
         td.querySelector('.cell-edit').value = subject;
+        td.classList.toggle('filled', !!subject);
+        td.classList.toggle('free', !subject);
         td.querySelector('.cell-view').innerHTML = subject
-            ? subject + '<br><small style="color:#6b7280;">' + faculty + '</small>'
-            : '—';
+            ? '<span class="lesson">' +
+                  '<span class="lesson-class">' + subject + '</span>' +
+                  (faculty ? '<span class="lesson-subject">' + faculty + '</span>' : '') +
+              '</span>'
+            : '<span class="free-dash">—</span>';
 
         closeChange();
+    }
+
+    // --- Faculty-grid editing (mirrors the class grid; picks a class+subject) ---
+    let facActiveTd = null;
+
+    function facCellClicked(td) {
+        if (!td.closest('.card').classList.contains('editing')) return;
+
+        facActiveTd = td;
+        const sel  = td.querySelector('.cell-edit');
+        const list = document.getElementById('changeList');
+        list.innerHTML = '';
+
+        Array.from(sel.options).forEach(opt => {
+            const cls = opt.getAttribute('data-class') || '';
+            const isActive = opt.value === td.dataset.curSubject && cls === td.dataset.curClass;
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'change-option' + (isActive ? ' active' : '');
+            btn.innerHTML = opt.value
+                ? '<strong>' + cls + '</strong><br><small>' + opt.value + '</small>'
+                : '<em>— (clear slot)</em>';
+            btn.onclick = () => facChooseSubject(opt.value, cls, opt.getAttribute('data-lab') === '1');
+            list.appendChild(btn);
+        });
+
+        document.getElementById('changeOverlay').style.display = 'flex';
+    }
+
+    function facChooseSubject(subject, cls, isLab) {
+        const td = facActiveTd;
+        if (!td) return;
+
+        td.dataset.curSubject = subject;
+        td.dataset.curClass   = cls;
+        td.dataset.isLab      = isLab ? '1' : '0';
+        td.classList.toggle('filled', !!subject);
+        td.classList.toggle('free', !subject);
+        td.classList.toggle('is-lab', !!subject && isLab);
+        td.querySelector('.cell-view').innerHTML = subject
+            ? '<span class="lesson">' +
+                  '<span class="lesson-class">' + cls + '</span>' +
+                  (isLab ? '<span class="lab-tag">Lab · 2 hrs</span>' : '') +
+                  '<span class="lesson-subject">' + subject + '</span>' +
+              '</span>'
+            : '<span class="free-dash">—</span>';
+
+        closeChange();
+    }
+
+    // Collect a faculty's timetable and POST it to the Save endpoint (dd dump).
+    function saveFacultyTimetable(btn) {
+        const card = btn.closest('.card');
+        const faculty = card.querySelector('input[name="faculty_name"]').value;
+        const lectures = [];
+        card.querySelectorAll('td[data-period]').forEach(td => {
+            const subject = td.dataset.curSubject;
+            if (!subject) return; // skip free slots
+            lectures.push({
+                faculty:     faculty,
+                class:       td.dataset.curClass || '',
+                day:         td.dataset.dayName,
+                time:        td.dataset.time,
+                description: td.dataset.desc,
+                subject:     subject,
+                is_lab:      td.dataset.isLab === '1',
+            });
+        });
+        const form = btn.closest('form');
+        form.querySelector('.save-data').value = JSON.stringify(lectures);
+        form.submit();
     }
 
     // Is this faculty already assigned in the same (period, day) in ANY class?
