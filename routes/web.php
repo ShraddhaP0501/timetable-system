@@ -5,8 +5,17 @@ use App\Http\Controllers\TestController;
 use App\Http\Controllers\LectureReportController;
 use App\Http\Controllers\TimetableGeneratorController;
 use App\Http\Controllers\SubjectMappingController;
+use App\Http\Controllers\FacultyHoursController;
 
 Route::get('/test', [TestController::class, 'index']);
+
+// Faculty weekly hours (step 1 — DEMO; save() dd()s the payload).
+Route::get('/faculty-hours', [FacultyHoursController::class, 'index'])
+    ->name('faculty.hours');
+Route::post('/faculty-hours-save', [FacultyHoursController::class, 'save'])
+    ->name('faculty.hours.save');
+Route::post('/faculty-hours-continue', [FacultyHoursController::class, 'proceed'])
+    ->name('faculty.hours.continue');
 
 // Subject mapping + faculty assignment (DEMO — no DB writes; save() dd()s the payload).
 Route::get('/subject-mapping', [SubjectMappingController::class, 'index'])

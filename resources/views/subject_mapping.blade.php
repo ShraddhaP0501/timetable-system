@@ -133,7 +133,7 @@
     <div class="card" id="workload-card" style="display:none">
         <h2 class="report-title">Faculty Workload <span class="muted">(this class)</span></h2>
         <div class="workload-grid" id="workload-grid"></div>
-        <p class="hint">Periods of every subject a teacher is assigned in this class, summed live. Bars are relative to the busiest teacher here.</p>
+        <p class="hint">Assigned periods are drawn down from each teacher's weekly periods (set on the Faculty Periods screen). The bar fills as periods are used; it turns red if a teacher is over-allocated.</p>
     </div>
 
 </div>
@@ -177,29 +177,47 @@
     // teacher ticked on a (taught) subject gets that subject's periods, summed.
     var workloadCard = document.getElementById('workload-card');
     var workloadGrid = document.getElementById('workload-grid');
+
+    // Weekly periods per faculty (UID => total) from the Faculty Periods screen.
+    var FACULTY_HOURS  = @json($facultyHours);
+    var DEFAULT_WEEKLY = 36; // fallback periods/week when a teacher has none set
+
     function refreshWorkload() {
         if (!workloadGrid) return;
-        var totals = {};
+        // Aggregate assigned periods per faculty UID.
+        var used = {}; // uid -> { name, used }
         rows.forEach(function (row) {
             var cb = row.querySelector('[data-toggle]');
             if (cb && !cb.checked) return; // skip untaught subjects
             var pin = row.querySelector('.periods-input');
             var p = parseInt(pin && pin.value, 10) || 0;
             row.querySelectorAll('.ms-menu input:checked').forEach(function (c) {
+                var uid  = c.value;
                 var name = c.parentNode.querySelector('span').textContent.replace(' ★', '').trim();
-                totals[name] = (totals[name] || 0) + p;
+                if (!used[uid]) used[uid] = { name: name, used: 0 };
+                used[uid].used += p;
             });
         });
-        var names = Object.keys(totals);
-        if (!names.length) { workloadCard.style.display = 'none'; return; }
+
+        var uids = Object.keys(used);
+        if (!uids.length) { workloadCard.style.display = 'none'; return; }
         workloadCard.style.display = '';
-        var max = Math.max.apply(null, names.map(function (n) { return totals[n]; }));
-        names.sort(function (a, b) { return totals[b] - totals[a]; });
-        workloadGrid.innerHTML = names.map(function (n) {
-            var pct = max > 0 ? Math.round(totals[n] / max * 100) : 0;
-            return '<div class="workload-item"><div class="workload-top"><span>' + esc(n) +
-                   '</span><span class="muted">' + totals[n] + ' periods</span></div>' +
-                   '<div class="bar"><div class="bar-fill" style="width:' + pct + '%"></div></div></div>';
+        uids.sort(function (a, b) { return used[b].used - used[a].used; });
+
+        workloadGrid.innerHTML = uids.map(function (uid) {
+            var u    = used[uid];
+            var cap  = FACULTY_HOURS[uid] != null ? FACULTY_HOURS[uid] : DEFAULT_WEEKLY;
+            var left = cap - u.used;
+            var pct  = cap > 0 ? Math.min(100, Math.round(u.used / cap * 100)) : 0;
+            var over = left < 0;
+            return '<div class="workload-item">' +
+                   '<div class="workload-top"><span>' + esc(u.name) + '</span>' +
+                   '<span class="muted">' + u.used + ' / ' + cap + ' periods' +
+                   (over ? ' <strong style="color:#dc2626">(' + (-left) + ' over)</strong>'
+                         : ' <strong style="color:#16a34a">(' + left + ' left)</strong>') +
+                   '</span></div>' +
+                   '<div class="bar"><div class="bar-fill' + (over ? ' bar-hot' : '') +
+                   '" style="width:' + pct + '%"></div></div></div>';
         }).join('');
     }
 

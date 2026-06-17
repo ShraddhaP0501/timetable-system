@@ -203,6 +203,10 @@ class SubjectMappingController extends Controller
             $maxLoad = max($maxLoad, $w['load']);
         }
 
+        // Weekly hours per faculty set on the Faculty Hours screen (UID => total
+        // hours). Assigned periods draw down from this in the workload card.
+        $facultyHours = (array) session('faculty_hours', []);
+
         return view('subject_mapping', compact(
             'standards',
             'sections',
@@ -212,6 +216,7 @@ class SubjectMappingController extends Controller
             'mediumId',
             'matrix',
             'allFaculty',
+            'facultyHours',
             'workload',
             'maxLoad'
         ));
