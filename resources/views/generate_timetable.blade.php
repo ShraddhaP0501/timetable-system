@@ -161,13 +161,13 @@
                                         data-academic-year-id="{{ $cell['academic_year_id'] ?? '' }}"
                                         data-is-lab="{{ !empty($cell['is_lab']) ? 1 : 0 }}"
                                         onclick="cellClicked(this)"
-                                        @if($cell && ($cell['lab_part'] ?? null) === 'top') rowspan="2" @endif>
+                                        @if($cell && ($cell['lab_part'] ?? null) === 'top') rowspan="{{ $cell['lab_span'] ?? 2 }}" @endif>
                                         {{-- View mode --}}
                                         <span class="cell-view">
                                             @if($cell)
                                                 <span class="lesson">
                                                     <span class="lesson-class">{{ $cell['subject'] }}</span>
-                                                    @if(!empty($cell['is_lab'])) <span class="lab-tag">Lab · 2 hrs</span> @endif
+                                                    @if(!empty($cell['is_lab'])) <span class="lab-tag">Lab · {{ $cell['lab_hours'] ?? 2 }} hrs</span> @endif
                                                     @if(!empty($cell['class_teacher'])) <span class="ct-tag">Class Teacher</span> @endif
                                                     <span class="lesson-subject">{{ $cell['faculty'] }}</span>
                                                 </span>
@@ -269,12 +269,12 @@
                                         data-cur-subject="{{ $cell['subject'] ?? '' }}"
                                         data-is-lab="{{ !empty($cell['is_lab']) ? 1 : 0 }}"
                                         onclick="facCellClicked(this)"
-                                        @if($cell && ($cell['lab_part'] ?? null) === 'top') rowspan="2" @endif>
+                                        @if($cell && ($cell['lab_part'] ?? null) === 'top') rowspan="{{ $cell['lab_span'] ?? 2 }}" @endif>
                                         <span class="cell-view">
                                             @if($cell)
                                                 <span class="lesson">
                                                     <span class="lesson-class">{{ $cell['class'] }}</span>
-                                                    @if($cell['is_lab']) <span class="lab-tag">Lab · 2 hrs</span> @endif
+                                                    @if($cell['is_lab']) <span class="lab-tag">Lab · {{ $cell['lab_hours'] ?? 2 }} hrs</span> @endif
                                                     <span class="lesson-subject">{{ $cell['subject'] }}</span>
                                                 </span>
                                             @else

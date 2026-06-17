@@ -40,6 +40,7 @@
                         <th>Subject</th>
                         <th>Type</th>
                         <th>Per Week Hours</th>
+                        <th>Continuous Hrs</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -62,6 +63,7 @@
                                            value="{{ $row->lecture_week }}"
                                            style="width:80px; padding:6px; border:1px solid #d1d5db; border-radius:4px;">
                                 </td>
+                                <td style="color:#9ca3af;">—</td>
                             </tr>
                         @endif
 
@@ -72,16 +74,24 @@
                                 <td>{{ $row->subject }}</td>
                                 <td><span class="tag tag-lab">Lab</span></td>
                                 <td>
+                                    {{-- Per-week lab count (number of lab sessions). --}}
                                     <input type="number" min="0" max="30" form="reportForm"
                                            name="counts[{{ $report->classTitle }}][{{ $row->subject_id }}][lab]"
                                            value="{{ $row->lab_week }}"
+                                           style="width:80px; padding:6px; border:1px solid #d1d5db; border-radius:4px;">
+                                </td>
+                                <td>
+                                    {{-- Continuous hours per lab block (default 2). --}}
+                                    <input type="number" min="1" max="8" form="reportForm"
+                                           name="counts[{{ $report->classTitle }}][{{ $row->subject_id }}][lab_hours]"
+                                           value="2"
                                            style="width:80px; padding:6px; border:1px solid #d1d5db; border-radius:4px;">
                                 </td>
                             </tr>
                         @endif
                     @empty
                         <tr>
-                            <td colspan="5" class="empty">No Data Found</td>
+                            <td colspan="6" class="empty">No Data Found</td>
                         </tr>
                     @endforelse
                 </tbody>

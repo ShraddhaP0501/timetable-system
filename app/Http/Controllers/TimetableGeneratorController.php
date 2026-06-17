@@ -87,6 +87,10 @@ class TimetableGeneratorController extends Controller
                 if (isset($userCounts[$classTitle][$r->subject_id]['lab'])) {
                     $r->lab_week = max(0, (int) $userCounts[$classTitle][$r->subject_id]['lab']);
                 }
+                // Continuous hours per lab block (default 2).
+                $r->lab_hours = isset($userCounts[$classTitle][$r->subject_id]['lab_hours'])
+                    ? max(1, (int) $userCounts[$classTitle][$r->subject_id]['lab_hours'])
+                    : 2;
             }
 
             // Use this class's own override if the user set one, else the global value.
@@ -279,68 +283,94 @@ class TimetableGeneratorController extends Controller
             }
         }
 
-        // Build interleaved unit lists (round-robin across subjects for spread).
+        // Build the theory unit list (round-robin across subjects for spread).
         $theory = $this->interleaveUnits($records, false); // 1 period each
-        $labs   = $this->interleaveUnits($records, true);   // 2 consecutive periods each
 
-        // Each lab takes 2 periods; theory takes 1. Pinned first-periods count too.
-        $demand = $ctPrePlaced + count($theory) + (count($labs) * 2);
+        // Build lab blocks. A lab subject runs `lab_week` sessions per week, and
+        // each session is a continuous block of `lab_hours` periods (default 2).
+        $labs     = [];
+        $labHours = 0;
+        foreach ($records as $r) {
+            $count = (int) ($r->lab_week ?? 0);
+            $hours = max(1, (int) ($r->lab_hours ?? 2));
+            for ($i = 0; $i < $count; $i++) {
+                $labs[] = [
+                    'subject'          => $r->subject,
+                    'faculty'          => $r->faculty,
+                    'faculty_id'       => $r->faculty_id,
+                    'academy_id'       => $r->academy_id ?? null,
+                    'academic_year_id' => $r->academic_year_id ?? null,
+                    'hours'            => $hours,
+                ];
+                $labHours += $hours;
+            }
+        }
+
+        // Theory takes 1 period each; each lab block takes its own hours. Pinned
+        // first-periods count too.
+        $demand = $ctPrePlaced + count($theory) + $labHours;
 
         // At most $maxLabsPerDay lab sessions per day for a class.
         $labsOnDay = array_fill(0, $days, 0);
 
-        // --- Place labs first (harder: need two consecutive free periods) ---
+        // --- Place labs first (harder: need several consecutive free periods) ---
         foreach ($labs as $unit) {
-            $fid  = $unit['faculty_id'];
-            $done = false;
+            $fid   = $unit['faculty_id'];
+            $hours = $unit['hours'];
+            $done  = false;
             for ($d = 0; $d < $days && !$done; $d++) {
                 // Cap labs per day.
                 if ($labsOnDay[$d] >= $maxLabsPerDay) {
                     continue;
                 }
-                // Keep >= 1 free period for the teacher (a lab uses 2 periods).
-                if ($fid && (($teacherLoad[$fid][$d] ?? 0) + 2) > $maxTeacherPerDay) {
+                // Keep >= 1 free period for the teacher (the block uses $hours periods).
+                if ($fid && (($teacherLoad[$fid][$d] ?? 0) + $hours) > $maxTeacherPerDay) {
                     continue;
                 }
-                for ($p = 0; $p < $periods - 1 && !$done; $p++) {
-                    // A lab must not straddle the lunch break (period $lunchAfter
-                    // and $lunchAfter+1 are split by it).
-                    if ($lunchAfter > 0 && $p === $lunchAfter - 1) {
+                for ($p = 0; $p <= $periods - $hours && !$done; $p++) {
+                    // The continuous block must not straddle the lunch break,
+                    // which sits between period ($lunchAfter - 1) and $lunchAfter.
+                    if ($lunchAfter > 0 && $p < $lunchAfter && ($p + $hours - 1) >= $lunchAfter) {
                         continue;
                     }
-                    // Both periods of the block must be free (H2)...
-                    if ($grid[$p][$d] !== null || $grid[$p + 1][$d] !== null) {
-                        continue;
+                    // Every period of the block must be free for the class (H2)
+                    // and the teacher free in all of them (H1).
+                    $fits = true;
+                    for ($k = 0; $k < $hours; $k++) {
+                        if ($grid[$p + $k][$d] !== null) {
+                            $fits = false;
+                            break;
+                        }
+                        if ($fid && isset($busy[$p + $k][$d][$fid])) {
+                            $fits = false;
+                            break;
+                        }
                     }
-                    // ...and the teacher free in BOTH (H1).
-                    if ($fid && (isset($busy[$p][$d][$fid]) || isset($busy[$p + 1][$d][$fid]))) {
+                    if (!$fits) {
                         continue;
                     }
 
-                    // Top half spans both rows; bottom half is skipped in the view.
-                    $grid[$p][$d] = [
-                        'subject'          => $unit['subject'],
-                        'faculty'          => $unit['faculty'],
-                        'academy_id'       => $unit['academy_id'],
-                        'academic_year_id' => $unit['academic_year_id'],
-                        'is_lab'           => true,
-                        'lab_part'         => 'top',
-                    ];
-                    $grid[$p + 1][$d] = [
-                        'subject'          => $unit['subject'],
-                        'faculty'          => $unit['faculty'],
-                        'academy_id'       => $unit['academy_id'],
-                        'academic_year_id' => $unit['academic_year_id'],
-                        'is_lab'           => true,
-                        'lab_part'         => 'bottom',
-                    ];
+                    // First cell spans the whole block; the rest are skipped in the view.
+                    for ($k = 0; $k < $hours; $k++) {
+                        $grid[$p + $k][$d] = [
+                            'subject'          => $unit['subject'],
+                            'faculty'          => $unit['faculty'],
+                            'academy_id'       => $unit['academy_id'],
+                            'academic_year_id' => $unit['academic_year_id'],
+                            'is_lab'           => true,
+                            'lab_part'         => $k === 0 ? 'top' : 'bottom',
+                            'lab_span'         => $hours,
+                            'lab_hours'        => $hours,
+                        ];
+                        if ($fid) {
+                            $busy[$p + $k][$d][$fid] = true;
+                        }
+                    }
                     if ($fid) {
-                        $busy[$p][$d][$fid]     = true;
-                        $busy[$p + 1][$d][$fid] = true;
-                        $teacherLoad[$fid][$d]  = ($teacherLoad[$fid][$d] ?? 0) + 2;
+                        $teacherLoad[$fid][$d] = ($teacherLoad[$fid][$d] ?? 0) + $hours;
                     }
                     $labsOnDay[$d]++;
-                    $placed += 2;
+                    $placed += $hours;
                     $done = true;
                 }
             }
