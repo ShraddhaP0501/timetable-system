@@ -11,13 +11,24 @@
     <h1 style="text-align: center;">Subject Mapping &amp; Faculty Assignment</h1>
     <p class="demo-note" style="text-align: center;">Loaded live from the database. <strong>Save</strong> prints the payload that would be stored (nothing is written yet).</p>
 
-    {{-- ============ Step 1: pick a Standard ============ --}}
+    {{-- ============ Step 1: pick a Medium ============ --}}
     <div class="card">
-        <span class="label">Standard</span>
+        <span class="label">Medium</span>
+        <div class="tab-row">
+            @foreach($mediums as $m)
+                <a class="tab {{ (int) $m->AMID === $mediumId ? 'tab-active' : '' }}"
+                   href="{{ route('subject.mapping', ['standard' => $standardId, 'medium' => $m->AMID]) }}">
+                    {{ $m->Title }}
+                </a>
+            @endforeach
+        </div>
+
+        {{-- ============ Step 2: pick a Standard ============ --}}
+        <span class="label" style="margin-top:14px;">Standard</span>
         <div class="chip-row">
             @foreach($standards as $s)
                 <a class="chip {{ (int) $s->ASID === $standardId ? 'chip-active' : '' }}"
-                   href="{{ route('subject.mapping', ['standard' => $s->ASID]) }}">
+                   href="{{ route('subject.mapping', ['standard' => $s->ASID, 'medium' => $mediumId]) }}">
                     {{ $s->Title }}
                 </a>
             @endforeach
@@ -27,7 +38,9 @@
     {{-- ============ Step 3: the matrix ============ --}}
     <form method="POST" action="{{ route('subject.mapping.save') }}">
         @csrf
+        <input type="hidden" name="standard" value="{{ $standardId }}">
         <input type="hidden" name="section" value="{{ $divisionId }}">
+        <input type="hidden" name="medium" value="{{ $mediumId }}">
 
         @php
             $totalSubjects = count($matrix);
@@ -37,7 +50,8 @@
 
         <div class="card">
             <div class="card-head">
-                <h2 class="report-title">{{ optional($standards->firstWhere('ASID', $standardId))->Title }}</h2>
+                <h2 class="report-title">{{ optional($standards->firstWhere('ASID', $standardId))->Title }}
+                    <span class="muted">&bull; {{ optional($mediums->firstWhere('AMID', $mediumId))->Title }} medium</span></h2>
                 @if($totalSubjects)
                     <div class="status-line">
                         <span class="pill pill-total" id="pill-total">{{ $totalSubjects }} subjects</span>

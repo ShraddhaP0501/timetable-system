@@ -52,16 +52,25 @@ class SubjectMappingController extends Controller
             ->orderBy('Title')
             ->get(['ADID', 'Title']);
 
-        // Current selection (default to the first standard/division available).
+        // ---- Medium chips (from DB) ----
+        $mediums = DB::table('opd_academy_medium')
+            ->where('AcademyID', self::ACADEMY_ID)
+            ->where('IsDeleted', 0)
+            ->orderBy('Title')
+            ->get(['AMID', 'Title']);
+
+        // Current selection (default to the first standard/division/medium available).
         $standardId = (int) $request->input('standard', optional($standards->first())->ASID);
         $divisionId = (int) $request->input('section',  optional($sections->first())->ADID);
+        $mediumId   = (int) $request->input('medium',   optional($mediums->first())->AMID);
 
-        // ---- Subjects mapped to this standard + division (from DB) ----
+        // ---- Subjects mapped to this standard + division + medium (from DB) ----
         $subjectRows = DB::table('opd_academy_subject as a')
             ->leftJoin('opd_subject_master as m', 'm.SMID', '=', 'a.SubjectID')
             ->where('a.AcademyID', self::ACADEMY_ID)
             ->where('a.StandardID', $standardId)
             ->where('a.DivisionID', $divisionId)
+            ->where('a.MediumID', $mediumId)
             ->where('a.IsDeleted', 0)
             ->orderBy('m.SubjectName')
             ->get([
@@ -104,6 +113,7 @@ class SubjectMappingController extends Controller
             ->where('t.AcademyID', self::ACADEMY_ID)
             ->where('t.StandardID', $standardId)
             ->where('t.DivisionID', $divisionId)
+            ->where('t.MediumID', $mediumId)
             ->where('t.IsDeleted', 0)
             ->where('ts.IsDelete', 0)
             ->whereNotNull('ts.FacultyID')
@@ -196,8 +206,10 @@ class SubjectMappingController extends Controller
         return view('subject_mapping', compact(
             'standards',
             'sections',
+            'mediums',
             'standardId',
             'divisionId',
+            'mediumId',
             'matrix',
             'allFaculty',
             'workload',
@@ -215,6 +227,7 @@ class SubjectMappingController extends Controller
         $rows       = (array) $request->input('rows', []);
         $standardId = (int) $request->input('standard');
         $divisionId = (int) $request->input('section');
+        $mediumId   = (int) $request->input('medium');
 
         // Resolve names from the DB for a readable dump.
         $subjectNames = DB::table('opd_subject_master')
@@ -234,6 +247,7 @@ class SubjectMappingController extends Controller
 
         $standardTitle = DB::table('opd_academy_standard')->where('ASID', $standardId)->value('Title');
         $divisionTitle = DB::table('opd_academy_division')->where('ADID', $divisionId)->value('Title');
+        $mediumTitle   = DB::table('opd_academy_medium')->where('AMID', $mediumId)->value('Title');
 
         $mapping = [];
         foreach ($rows as $subjectId => $row) {
@@ -256,6 +270,7 @@ class SubjectMappingController extends Controller
             'note'     => 'DEMO — not saved to the database. This is the payload that WOULD be stored.',
             'standard' => $standardTitle . ' (ID ' . $standardId . ')',
             'section'  => $divisionTitle . ' (ID ' . $divisionId . ')',
+            'medium'   => $mediumTitle . ' (ID ' . $mediumId . ')',
             'subjects' => count($mapping),
             'mapping'  => $mapping,
         ]);
